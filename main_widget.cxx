@@ -4,13 +4,15 @@
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QStandardItemModel>
-#include <QTableView>
+#include <QStringListModel>
+#include <QListView>
+#include <QItemSelectionModel>
 #include <QList>
 #include <QVector>
 #include <QPointF>
 #include <QGroupBox>
 #include <QDoubleSpinBox>
+#include <QFileDialog>
 
 #include "convex_hull/convex_hull.hxx"
 
@@ -40,9 +42,18 @@ void Main_Widget::setupUI()
     spinsLayout->addWidget( yLabel );
     spinsLayout->addWidget( m_ySpin );
 
+    QHBoxLayout *pointButtonsLayout = new QHBoxLayout;
+    pointButtonsLayout->addWidget( m_addPointButton );
+    pointButtonsLayout->addWidget( m_delPointButton );
+
+    QHBoxLayout *fileButtonsLayout = new QHBoxLayout;
+    fileButtonsLayout->addWidget( m_openFileButton );
+    fileButtonsLayout->addWidget( m_saveFileButton );
+
     QVBoxLayout *leftLayout = new QVBoxLayout;
+    leftLayout->addLayout( fileButtonsLayout );
     leftLayout->addLayout( spinsLayout );
-    leftLayout->addWidget( m_addPointButton );
+    leftLayout->addLayout( pointButtonsLayout );
     leftLayout->addWidget( m_inputView );
     m_inputView->setModel(m_inputModel);
     m_inputView->setEditTriggers( QAbstractItemView::NoEditTriggers);
@@ -85,15 +96,20 @@ Main_Widget::Main_Widget(QWidget *parent)
   , m_ySpin(          new QDoubleSpinBox( this ) )
   , m_length(         new QLabel( "0", this) )
   , m_addPointButton( new QPushButton( tr( "Add Point" ), this) )
+  , m_delPointButton( new QPushButton( tr( "Delete Point" ), this) )
+  , m_openFileButton( new QPushButton( tr( "Open File" ), this) )
+  , m_saveFileButton( new QPushButton( tr( "Save File"), this) )
   , m_runButton(      new QPushButton( tr( "Run" ), this) )
-  , m_inputModel(     new QStandardItemModel( 0, 2, this ) )
-  , m_outputModel(    new QStandardItemModel( 0, 2, this ) )
-  , m_inputView(      new QTableView( this ) )
-  , m_outputView(     new QTableView( this ) )
+  , m_inputModel(     new QStringListModel( this ) )
+  , m_outputModel(    new QStringListModel( this ) )
+  , m_inputSelectionModel( new QItemSelectionModel( m_inputModel, this ))
+  , m_inputView(      new QListView( this ) )
+  , m_outputView(     new QListView( this ) )
   , m_plot(           new QwtPlot( tr( "Illustration" ), this) )
   , m_curve(          new QwtPlotCurve( tr( "Solution" ) ) )
 {
     setupUI();
+    m_inputView->setSelectionModel( m_inputSelectionModel );
     m_plot->setAutoReplot();
     m_plot->setAxisAutoScale( 0 );
     m_plot->setAxisAutoScale( 1 );
@@ -103,67 +119,81 @@ Main_Widget::Main_Widget(QWidget *parent)
     m_curve->attach( m_plot );
 
     connect( m_addPointButton, SIGNAL(clicked()), this, SLOT(addPoint()) );
+    connect( m_delPointButton, SIGNAL(clicked()), this, SLOT(delPoint()) );
     connect( m_runButton, SIGNAL(clicked()), this, SLOT(run()) );
+    connect( m_openFileButton, SIGNAL(clicked()), this, SLOT(openFile()) );
+    connect( m_saveFileButton, SIGNAL(clicked()), this, SLOT(saveFile()) );
 }
 
 Main_Widget::~Main_Widget()
 {
-//    for (auto symbol : m_symbols)
-//        delete symbol;
-//    for (auto marker : m_markers)
-//        delete marker;
-//    delete m_curve;
-//    delete m_plot;
+    for (auto marker : m_markers)
+        delete marker;
+    delete m_curve;
 }
 
 void Main_Widget::generateConvexHullModel( const std::deque<QPointF>& convexHull )
 {
-    m_outputModel->removeRows(0, m_outputModel->rowCount());
+    QStringList output;
 
     QVector< QPointF > samples( convexHull.size() );
 
-    for (auto it = convexHull.begin(); convexHull.end() != it; ++it)
+    auto prev( convexHull.back() );
+    auto length( 0.0 );
+
+    for (const auto& point : convexHull)
     {
-        const QPointF& point = *it;
+        output << QString( "( %0; %1 )" ).arg( point.x(), 0, 'g', 2).arg( point.y(), 0, 'g', 2);
 
-        m_outputModel->appendRow( { new QStandardItem( QString::number( point.x() ))
-                                 , new QStandardItem( QString::number( point.y() ))
-                                 }
-                               );
+        samples << point;
 
-        samples << *it;
+        const auto dx = point.x() - prev.x();
+        const auto dy = point.y() - prev.y();
+        length += sqrt( dx * dx + dy * dy );
+        prev = point;
     }
+
+    m_outputModel->setStringList( output );
 
     samples.push_back( samples.front() );
-
-    double length( 0.0 );
-    auto prev = convexHull.front();
-
-    for (auto it = convexHull.begin() + 1; convexHull.end() != it; ++it)
-    {
-        const auto dx = it->x() - prev.x();
-        const auto dy = it->y() - prev.y();
-        length += sqrt( dx * dx + dy * dy );
-
-        prev = *it;
-    }
-
-    const auto dx = prev.x() - convexHull.front().x();
-    const auto dy = prev.y() - convexHull.front().y();
-
-    length += sqrt( dx * dx + dy * dy);
-
-    m_length->setText( QString::number( length ));
-
     m_curve->setSamples( samples );
+
+    m_length->setText( QString::number( length, 'g', 2));
+}
+
+void Main_Widget::clearOutput()
+{
+    m_curve->setSamples( QVector< QPointF>() );
+    m_outputModel->setStringList( QStringList() );
+    m_length->setText( "0" );
 }
 
 void Main_Widget::run()
 {
+    if ( 3 > m_points.size() )
+        return;
     Convex_Hull ch;
     const auto& convexHull = ch.compute( m_points.toStdVector() );
     generateConvexHullModel( convexHull );
 
+}
+
+void Main_Widget::addPoint(const QPointF &point)
+{
+    m_points.push_back( point );
+    m_markers.push_back( new QwtPlotMarker );
+    QwtPlotMarker *marker = m_markers.back();
+
+    marker->setSymbol( new QwtSymbol( QwtSymbol::Diamond, Qt::red, Qt::NoPen, QSize(10, 10) ) );
+    marker->setValue( point );
+    marker->attach( m_plot );
+
+    m_inputModel->insertRow( m_inputModel->rowCount() );
+    QModelIndex index = m_inputModel->index( m_inputModel->rowCount() - 1);
+    m_inputModel->setData(index, QString( "( %0; %1 )" )
+                          .arg( point.x(), 0, 'g', 2)
+                          .arg( point.y(), 0, 'g', 2)
+                          );
 }
 
 void Main_Widget::addPoint()
@@ -173,20 +203,94 @@ void Main_Widget::addPoint()
     if (m_points.contains( pointToAdd ))
         return; // do nothing
 
-    m_points.push_back( pointToAdd );
-    const QPointF& point = m_points.back();
-    m_markers.push_back( new QwtPlotMarker );
-    QwtPlotMarker& marker = *m_markers.back();
-    m_symbols.push_back( new QwtSymbol( QwtSymbol::Diamond, Qt::red, Qt::NoPen, QSize(10, 10) ) );
+    clearOutput();
 
-    marker.setSymbol( m_symbols.back() );
-    marker.setValue( point );
-    marker.attach( m_plot );
+    addPoint( pointToAdd );
+}
 
-    m_plot->updateAxes();
+void Main_Widget::delPoint()
+{
+    const int row = m_inputSelectionModel->currentIndex().row();
 
-    m_inputModel->appendRow( { new QStandardItem( QString::number( point.x() ) )
-                             , new QStandardItem( QString::number( point.y() ) )
-                             }
-                           );
+    if (-1 == row)
+        return;
+
+    const auto x = m_points.at( row ).x();
+    const auto y = m_points.at( row ).y();
+    m_points.remove( row );
+
+//    m_markers.at( row )->detach();
+    delete m_markers.at( row );
+    m_markers.remove( row );
+
+    m_inputModel->removeRow( row );
+
+    clearOutput();
+
+    m_plot->replot();
+
+    m_xSpin->setValue( x );
+    m_ySpin->setValue( y );
+
+}
+#include <QFile>
+#include <QDataStream>
+void Main_Widget::openFile()
+{
+    const QString fileName = QFileDialog::getOpenFileName( this, tr("Open File"));
+    if (fileName.isNull())
+        return;
+
+    QFile file( fileName );
+    if (!file.open( QIODevice::ReadOnly ) )
+    {
+        //throw
+        return;
+    }
+
+    QDataStream in( &file );
+    in.setVersion( QDataStream::Qt_4_8 );
+
+    QVector< QPointF > points;
+
+    in >> points;
+    file.close();
+
+    for (auto marker : m_markers)
+        delete marker;
+    m_markers.clear();
+
+    m_inputModel->removeRows(0, m_points.size() );
+
+    clearOutput();
+
+    m_points.clear();
+    m_points.reserve( points.size() );
+
+    for (const auto& point : points )
+    {
+        addPoint( point );
+    }
+}
+
+
+void Main_Widget::saveFile()
+{
+    const QString fileName = QFileDialog::getSaveFileName( this, tr("Save File") );
+    if (fileName.isNull())
+        return;
+
+    QFile file( fileName );
+    if (!file.open( QIODevice::WriteOnly ))
+    {
+        //throw error;
+        return;
+    }
+
+    QDataStream out( &file );
+    out.setVersion( QDataStream::Qt_4_8 );
+
+    out << m_points;
+
+    file.close();
 }
