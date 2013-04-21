@@ -8,7 +8,6 @@
 #include <QListView>
 #include <QItemSelectionModel>
 #include <QList>
-#include <QVector>
 #include <QPointF>
 #include <QGroupBox>
 #include <QDoubleSpinBox>
@@ -127,8 +126,7 @@ Main_Widget::Main_Widget(QWidget *parent)
 
 Main_Widget::~Main_Widget()
 {
-    for (auto marker : m_markers)
-        delete marker;
+    qDeleteAll( m_markers );
     delete m_curve;
 }
 
@@ -136,7 +134,8 @@ void Main_Widget::generateConvexHullModel( const std::deque<QPointF>& convexHull
 {
     QStringList output;
 
-    QVector< QPointF > samples( convexHull.size() );
+    QVector< QPointF > samples;
+    samples.reserve( convexHull.size() );
 
     auto prev( convexHull.back() );
     auto length( 0.0 );
@@ -173,7 +172,7 @@ void Main_Widget::run()
     if ( 3 > m_points.size() )
         return;
     Convex_Hull ch;
-    const auto& convexHull = ch.compute( m_points.toStdVector() );
+    const auto& convexHull = ch.compute( m_points.toVector().toStdVector() );
     generateConvexHullModel( convexHull );
 
 }
@@ -217,11 +216,12 @@ void Main_Widget::delPoint()
 
     const auto x = m_points.at( row ).x();
     const auto y = m_points.at( row ).y();
-    m_points.remove( row );
+    m_points.removeAt( row );
+
 
 //    m_markers.at( row )->detach();
     delete m_markers.at( row );
-    m_markers.remove( row );
+    m_markers.removeAt( row );
 
     m_inputModel->removeRow( row );
 

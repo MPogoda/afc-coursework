@@ -1,6 +1,6 @@
 #pragma once
 
-#include <QVector>
+#include <QList>
 #include <QWidget>
 #include <vector>
 #include <deque>
@@ -40,9 +40,8 @@ private:
     QwtPlot             *m_plot;
     QwtPlotCurve        *m_curve;
 
-    QVector< QPointF > m_points;
-    QVector< QPointF > m_convexHull;
-    QVector< QwtPlotMarker* > m_markers;
+    QList< QPointF > m_points;
+    QList< QwtPlotMarker* > m_markers;
 
     void generateConvexHullModel( const std::deque< QPointF >& convexHull );
     void setupUI();

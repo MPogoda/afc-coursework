@@ -12,7 +12,8 @@ using std::min_element;
 namespace {
 const bool bottomComparator(const QPointF& a, const QPointF& b)
 {
-    const bool result = (a.y() < b.y()) ? true : ((a.x() < b.x()) ? true : false);
+    const bool result = (a.y() < b.y()) ? true :
+      ((a.y() == b.y()) && (a.x() < b.x()) ? true : false);
     return result;
 }
 

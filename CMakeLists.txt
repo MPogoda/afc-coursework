@@ -3,10 +3,10 @@ project( afc )
 cmake_minimum_required( VERSION 2.8.6 )
 set( CMAKE_AUTOMOC true )
 
-if( "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" )
-  add_definitions( -std=c++11 )
-elseif( "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" )
-  add_definitions( -std=c++0x )
+set( CMAKE_CXX_FLAGS "-std=c++11" )
+
+if( "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" )
+  set ( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
 endif()
 
 find_package( Qt4 REQUIRED QtGui QtCore )
